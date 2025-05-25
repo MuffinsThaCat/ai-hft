@@ -1,0 +1,53 @@
+[package]
+name = "ai-trading-agent"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "AI-powered trading agent for Avalanche blockchain"
+
+[dependencies]
+tokio = { version = "1.28", features = ["full"] }
+reqwest = { version = "0.11", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.7"
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8"
+log = "0.4"
+env_logger = "0.10"
+simple_logger = "4.2"
+async-trait = "0.1"
+futures = "0.3"
+ethers = { version = "2.0", features = ["legacy", "rustls", "ws"] }
+hex = "0.4"
+uuid = { version = "1.4", features = ["v4"] }
+warp = "0.3"
+regex = "1.8"
+# Chainlink CCIP dependencies
+ethers-contract = "2.0"
+ethers-core = "2.0"
+ethers-providers = "2.0"
+ethers-signers = "2.0"
+
+# StatelessVM integration
+avalanche-stateless-vm = { path = "../stateless-vm" }
+
+# EVM-Verify components
+pcd = { path = "../evm-verify/pcd" }
+
+# Cryptography & verification
+sha3 = "0.10"
+rlp = "0.5"
+anyhow = "1.0"
+thiserror = "1.0"
+
+# LLM API clients
+anthropic = "0.0.8"
+dotenv = "0.15.0"
+
+[dev-dependencies]
+mockall = "0.11"
+
+[lib]
+name = "ai_trading_agent"
+path = "src/lib.rs"

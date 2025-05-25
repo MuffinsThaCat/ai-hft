@@ -1,0 +1,15 @@
+{
+  "name": "testdata",
+  "version": "1.0.0",
+  "main": "create_test_keystore.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "ethers": "^5.7.2"
+  }
+}
