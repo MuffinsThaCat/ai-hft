@@ -14,3 +14,10 @@ Cargo.lock
 
 # Logs
 *.log
+
+# Files containing sensitive API keys
+config/config.toml
+config/config.toml.bak
+run_agent.sh
+test_claude4_access.sh
+test_claude4_opus.sh
