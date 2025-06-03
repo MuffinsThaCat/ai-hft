@@ -526,10 +526,15 @@ impl SecurityVerifier {
     pub fn set_test_vulnerabilities(&mut self, vulnerabilities: Vec<VulnerabilityType>) {
         self.test_vulnerabilities = vulnerabilities;
     }
-    
+
     /// Helper to add a specific vulnerability type for testing
     pub fn add_test_vulnerability(&mut self, vulnerability_type: VulnerabilityType) {
         self.test_vulnerabilities.push(vulnerability_type);
+    }
+    
+    /// Check if the verifier is in test mode
+    pub fn is_test_mode(&self) -> bool {
+        self.test_mode
     }
 
     /// Verify a contract by its address

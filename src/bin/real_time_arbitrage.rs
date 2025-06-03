@@ -3,6 +3,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::time;
 use ai_trading_agent::models::error::AgentResult;
+use ai_trading_agent::security::parallel_verifier::{ParallelSecurityVerifier, ParallelVerifierConfig};
+use ai_trading_agent::utils::config::SecurityConfig;
+use ai_trading_agent::utils::performance::{PerformanceCategory, PerformanceTracker};
+use num_cpus;
+
+// Import Ethereum types for transaction verification
+use ethers::types::{Transaction, Address, U256, U64, Bytes, H256};
 
 // Simulated DEX pair data structure
 #[derive(Debug, Clone)]
@@ -215,38 +222,47 @@ struct RealTimeTrader {
     market_monitor: Arc<RealTimeMonitor>,
     is_active: Arc<Mutex<bool>>,
     last_trade: Arc<Mutex<Instant>>,
-    stats: Arc<Mutex<TradingStats>>,
     min_trade_interval_seconds: u64,
+    stats: Arc<Mutex<TradingStats>>,
+    security_verifier: Arc<ParallelSecurityVerifier>,
+    performance_tracker: Arc<PerformanceTracker>,
 }
 
 impl RealTimeTrader {
     fn new(
         market_monitor: Arc<RealTimeMonitor>,
         min_trade_interval_seconds: u64,
+        security_verifier: Arc<ParallelSecurityVerifier>,
+        performance_tracker: Arc<PerformanceTracker>,
     ) -> Self {
         Self {
             market_monitor,
             is_active: Arc::new(Mutex::new(false)),
-            last_trade: Arc::new(Mutex::new(Instant::now())),
-            stats: Arc::new(Mutex::new(TradingStats::default())),
+            last_trade: Arc::new(Mutex::new(Instant::now().checked_sub(Duration::from_secs(600)).unwrap_or(Instant::now()))),
             min_trade_interval_seconds,
+            stats: Arc::new(Mutex::new(TradingStats::default())),
+            security_verifier,
+            performance_tracker,
         }
     }
 
-    async fn start_trading(&self) {
+    async fn start_trading(self: &Arc<Self>) {
         // Set the active flag to true
         {
             let mut is_active = self.is_active.lock().unwrap();
             *is_active = true;
         }
-
-        // Create a clone of the active flag for the async task
-        let is_active = self.is_active.clone();
-        let market_monitor = self.market_monitor.clone();
-        let last_trade = self.last_trade.clone();
-        let stats = self.stats.clone();
-        let min_trade_interval = Duration::from_secs(self.min_trade_interval_seconds);
-
+        
+        // Launch the trading loop in a separate task
+        let trader = self.clone();
+        let is_active = trader.is_active.clone();
+        let market_monitor = trader.market_monitor.clone();
+        let last_trade = trader.last_trade.clone();
+        let stats = trader.stats.clone();
+        let security_verifier = trader.security_verifier.clone();
+        let performance_tracker = trader.performance_tracker.clone();
+        let min_trade_interval = Duration::from_secs(trader.min_trade_interval_seconds);
+        
         // Spawn a task to continuously monitor and execute trades
         tokio::spawn(async move {
             println!("Starting real-time arbitrage trading");
@@ -289,9 +305,9 @@ impl RealTimeTrader {
                     println!("Executing arbitrage opportunity: {} -> {}, expected profit: ${:.2}", 
                         opportunity.source_dex, opportunity.target_dex, opportunity.net_profit_usd);
                     
-                    // Execute the opportunity (simulated)
+                    // Execute the opportunity with security verification (simulated)
                     // In production, this would make actual smart contract calls
-                    let execution_success = simulate_execute_arbitrage(opportunity);
+                    let execution_success = simulate_execute_arbitrage(opportunity, &security_verifier, &performance_tracker).await;
                     
                     if execution_success {
                         println!("Trade executed successfully! Profit: ${:.2}", opportunity.net_profit_usd);
@@ -397,16 +413,146 @@ fn simulate_fetch_dex_pair(dex: &str, pair_address: &str) -> DEXPair {
     }
 }
 
-// Simulate executing an arbitrage trade (in production, this would make actual blockchain transactions)
-fn simulate_execute_arbitrage(opportunity: &ArbitrageOpportunity) -> bool {
-    // For this simulation, we'll succeed 80% of the time
+async fn verify_transaction_security(
+    verifier: &ParallelSecurityVerifier,
+    performance_tracker: &PerformanceTracker,
+    source_dex: &str,
+    target_dex: &str,
+) -> bool {
+    // Perform security verification for both source and target DEX contracts
+    performance_tracker.start_measure(PerformanceCategory::SecurityVerification, "verify_transaction_security");
+    
+    // In production code, this would call the parallel verifier with the actual smart contract bytecode
+    // of the DEX contracts involved in the arbitrage
+    
+    // For this simulation, we'll create synthetic transactions to simulate the verification
+    let source_tx = Transaction {
+        hash: H256::from_low_u64_be(source_dex.as_bytes().iter().fold(0u64, |acc, &x| acc.wrapping_add(x as u64))),
+        nonce: U256::from(0),
+        block_hash: None,
+        block_number: None,
+        transaction_index: None,
+        from: Address::from([0u8; 20]),
+        to: Some(Address::from([0u8; 20])),
+        value: U256::from(0),
+        gas_price: Some(U256::from(50000000000u64)),
+        gas: U256::from(21000),
+        input: Bytes::from(vec![]),
+        v: U64::from(1), 
+        r: U256::from(0),
+        s: U256::from(0),
+        transaction_type: None,
+        access_list: None,
+        max_priority_fee_per_gas: None,
+        max_fee_per_gas: None,
+        chain_id: None,
+        other: Default::default(),
+    };
+    
+    let target_tx = Transaction {
+        hash: H256::from_low_u64_be(target_dex.as_bytes().iter().fold(0u64, |acc, &x| acc.wrapping_add(x as u64))),
+        nonce: U256::from(0),
+        block_hash: None,
+        block_number: None,
+        transaction_index: None,
+        from: Address::from([0u8; 20]),
+        to: Some(Address::from([0u8; 20])),
+        value: U256::from(0),
+        gas_price: Some(U256::from(50000000000u64)),
+        gas: U256::from(21000),
+        input: Bytes::from(vec![]),
+        v: U64::from(1),
+        r: U256::from(0),
+        s: U256::from(0),
+        transaction_type: None,
+        access_list: None,
+        max_priority_fee_per_gas: None,
+        max_fee_per_gas: None,
+        chain_id: None,
+        other: Default::default(),
+    };
+    
+    let source_verification = verifier.verify_transaction(&source_tx).await;
+    let target_verification = verifier.verify_transaction(&target_tx).await;
+    
+    let verification_result = match (source_verification, target_verification) {
+        (Ok(source_result), Ok(target_result)) => {
+            !source_result.has_critical_vulnerabilities() && !target_result.has_critical_vulnerabilities()
+        },
+        _ => false, // Any verification failure means we don't proceed
+    };
+    
+    performance_tracker.stop_measure("verify_transaction_security");
+    
+    // Log the verification latency
+    if let Some(stats) = performance_tracker.get_stats(PerformanceCategory::SecurityVerification) {
+        println!("Security verification completed in {:.2} ms", stats.last_duration.as_secs_f64() * 1000.0);
+    }
+    
+    verification_result
+}
+
+// Simulate executing an arbitrage trade with security verification
+async fn simulate_execute_arbitrage(
+    opportunity: &ArbitrageOpportunity,
+    verifier: &ParallelSecurityVerifier,
+    performance_tracker: &PerformanceTracker,
+) -> bool {
+    // First verify the security of the contracts we're interacting with
+    let security_verified = verify_transaction_security(
+        verifier,
+        performance_tracker,
+        &opportunity.source_dex,
+        &opportunity.target_dex
+    ).await;
+    
+    if !security_verified {
+        println!("Security verification failed! Aborting trade for safety.");
+        return false;
+    }
+    
+    // For this simulation, we'll succeed 80% of the time if security verification passes
     // In production, this would execute actual flash loan transactions
     opportunity.confidence > 0.2
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> AgentResult<()> {
-    println!("Starting AI Trading Agent - Real-Time Arbitrage Demo");
+    println!("Starting AI Trading Agent - Real-Time Arbitrage Demo with Parallel Security Verification");
+    
+    // Initialize performance tracking
+    let performance_tracker = Arc::new(PerformanceTracker::new());
+    
+    // Configure the parallel security verifier
+    let verifier_config = ParallelVerifierConfig {
+        worker_threads: num_cpus::get(), // Using num_cpus to get available CPU cores
+        aggressive_caching: true,
+        cache_ttl_ms: 300000, // 5 minutes cache TTL in milliseconds
+        preload_common_contracts: true,
+    };
+    
+    // Configure the security settings
+    let security_config = SecurityConfig {
+        verification_mode: "full".to_string(),
+        verify_contracts: true,
+        max_risk_score: 80,
+        verify_reentrancy: true,
+        verify_integer_underflow: true,
+        verify_integer_overflow: true,
+        verify_unchecked_calls: true,
+        verify_upgradability: true,
+        verify_mev_vulnerability: true,
+        verify_cross_contract_reentrancy: true,
+        verify_precision_loss: true,
+        verify_gas_griefing: true,
+        verify_access_control: true,
+        cache_verification_results: true,
+        verification_cache_duration_s: 300,
+    };
+    
+    // Create security verifier instance
+    let security_verifier = Arc::new(ParallelSecurityVerifier::new(&security_config, "demontrader", verifier_config.clone()));
+    println!("Parallel security verifier initialized with {} threads", verifier_config.worker_threads);
     
     // Configure the real-time market monitoring with example DEX pairs
     let pairs = vec![
@@ -435,15 +581,19 @@ async fn main() -> AgentResult<()> {
     let trader = RealTimeTrader::new(
         market_monitor.clone(),
         min_trade_interval_seconds,
+        security_verifier.clone(),
+        performance_tracker.clone(),
     );
     println!("Real-time trader initialized");
     
-    // Start trading
+    // Start trading (this would normally run indefinitely)
+    let trader = Arc::new(trader);
     trader.start_trading().await;
     println!("Trading started! Press Ctrl+C to stop.");
     
     // Print the monitoring instructions
-    println!("\nMonitoring for arbitrage opportunities between these DEXes:");
+    println!("
+Monitoring for arbitrage opportunities between these DEXes:");
     println!("- TraderJoe");
     println!("- Pangolin");
     println!("- SushiSwap");
@@ -457,6 +607,9 @@ async fn main() -> AgentResult<()> {
     println!("- Minimum profit threshold: ${}", 20.0);
     println!("- Minimum time between trades: {} seconds", min_trade_interval_seconds);
     println!("- Polling interval: {} ms", 5000);
+    println!("- Security verification threads: {}", verifier_config.worker_threads);
+    println!("- Security verification caching: {}", if verifier_config.aggressive_caching { "Enabled" } else { "Disabled" });
+    println!("- Security verification cache TTL: {} seconds", verifier_config.cache_ttl_ms / 1000);
     
     // Keep the main thread alive for Ctrl+C
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
@@ -489,6 +642,15 @@ async fn main() -> AgentResult<()> {
     println!("- Maximum profit from a single trade: ${:.2}", stats.max_profit_usd);
     println!("- Total gas spent: ${:.2}", stats.total_gas_spent_usd);
     println!("- Net profit after gas: ${:.2}", stats.total_profit_usd - stats.total_gas_spent_usd);
+    
+    // Print performance metrics
+    // Log stats from our performance tracking
+    if let Some(stats) = performance_tracker.get_stats(PerformanceCategory::SecurityVerification) {
+        println!("Average security verification time: {:.2} ms", stats.avg_duration.as_secs_f64() * 1000.0);
+        println!("Fastest security verification: {:.2} ms", stats.min_duration.as_secs_f64() * 1000.0);
+        println!("Slowest security verification: {:.2} ms", stats.max_duration.as_secs_f64() * 1000.0);
+        println!("Total security verifications performed: {}", stats.count);
+    }
     
     println!("\nThank you for using the AI Trading Agent!");
     Ok(())
