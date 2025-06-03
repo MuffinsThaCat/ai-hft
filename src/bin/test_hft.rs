@@ -129,6 +129,7 @@ async fn run_hft_test() -> Result<(), Box<dyn Error>> {
             verify_contracts: true,
             max_risk_score: 7,
             verify_reentrancy: true,
+            verify_access_control: true,
             verify_integer_underflow: true,
             verify_integer_overflow: true,
             verify_unchecked_calls: true,

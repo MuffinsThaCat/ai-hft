@@ -121,6 +121,7 @@ fn create_test_transaction(wallet_address: Address) -> StatelessTxRequest {
         data: format!("0x{}", hex::encode(calldata)),
         gas_limit: "0x100000".to_string(),
         gas_price: "0x3b9aca00".to_string(), // 1 Gwei
+        bundle_id: Some(uuid::Uuid::new_v4().to_string()),
         security_verification: SecurityVerificationRequest {
             address: format!("0x{}", hex::encode(wallet_address.as_bytes())),
             enabled: false,

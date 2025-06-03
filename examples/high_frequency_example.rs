@@ -109,9 +109,11 @@ fn create_test_config() -> Config {
 
     let data_config = DataConfig {
         providers: vec!["coingecko".to_string(), "dextools".to_string()],
+        provider_type: Some("coingecko".to_string()),
         update_interval_ms: 1000,
-        cache_duration_s: 30,
+        cache_expiry_seconds: 30,
         avalanche_rpc_url: "https://api.avax.network/ext/bc/C/rpc".to_string(),
+        ccip_router_address: None,
     };
 
     let execution_config = ExecutionConfig {
@@ -152,6 +154,7 @@ fn create_test_config() -> Config {
         verify_cross_contract_reentrancy: true,
         verify_precision_loss: true,
         verify_gas_griefing: true,
+        verify_access_control: true,
         cache_verification_results: true,
         verification_cache_duration_s: 3600,
     };
@@ -196,7 +199,7 @@ async fn run_high_frequency_example(config: &Config) -> AgentResult<()> {
     let retry_backoff_ms = 1000; // 1 second base backoff time
     
     let mut executor = StatelessVmExecutor::new(
-        stateless_vm_url, 
+        &stateless_vm_url, 
         verification_timeout_ms, 
         max_retry_attempts, 
         retry_backoff_ms
@@ -230,6 +233,7 @@ async fn run_high_frequency_example(config: &Config) -> AgentResult<()> {
                 data: "0x123456789abcdef".to_string(), // Sample transaction data
                 gas_limit: "200000".to_string(),
                 gas_price: "5000000000".to_string(), // 5 gwei
+                bundle_id: Some(uuid::Uuid::new_v4().to_string()),
                 security_verification: hf_strategy.prepare_security_verification("0xTargetContractAddress"),
             };
             

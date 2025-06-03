@@ -1,11 +1,11 @@
 use std::fmt;
 use std::sync::{Arc, RwLock, Mutex};
 use std::collections::HashMap;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 use std::str::FromStr;
 
 use serde::{Serialize, Deserialize};
-use ethers::types::{H160, H256, Transaction, Bytes, Address, U256, U64};
+use ethers::types::{H160, Transaction, Bytes, Address};
 use log::{debug, warn, info};
 
 use crate::utils::config::SecurityConfig;
@@ -70,9 +70,18 @@ impl std::fmt::Display for SendError {
 }
 
 impl std::error::Error for SendError {}
+use std::sync::{Arc, RwLock, Mutex};
+use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::str::FromStr;
 
 use std::cmp::min;
+use serde::{Serialize, Deserialize};
+use ethers::types::{Transaction, U256, H256, Bytes};
+use ethers::types::{H160, U64, OtherFields};
+use log::{debug, warn};
 use uuid::Uuid;
+
 /// Security verification modes for transaction submission
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum SecurityVerificationMode {
@@ -535,16 +544,20 @@ impl SecurityVerifier {
     /// Verify a contract by its address
     /// 
     /// Fetch contract bytecode from the network
-    pub fn fetch_bytecode<'a>(&'a self, address: &'a str) -> impl std::future::Future<Output = Result<Bytes, SendError>> + Send + 'a {
+    pub fn fetch_bytecode(&self, address: &str) -> impl std::future::Future<Output = Result<Bytes, SendError>> + Send + '_ {
         async move {
             if self.test_mode {
                 // In test mode, return a simple mock bytecode
                 return Ok(Bytes::from(vec![0x60, 0x80, 0x60, 0x40, 0x52])); // Simple PUSH1 PUSH1 MSTORE
             }
             
-            // Use the stateless_vm_client to fetch the bytecode
-            match self.stateless_vm_client.fetch_bytecode(address).await {
-                Ok(bytes) => Ok(Bytes::from(bytes)), // Convert Vec<u8> to Bytes
+            // Parse address
+            let address = H160::from_str(address).map_err(|_| SendError::InvalidAddress)?;
+            
+            // Use a provider to fetch the bytecode
+            // In a real implementation, you would use the stateless_vm_client or a web3 provider
+            match self.stateless_vm_client.get_code(address).await {
+                Ok(code) => Ok(code),
                 Err(e) => Err(SendError::ApiError(format!("Failed to fetch bytecode: {}", e)))
             }
         }
@@ -552,7 +565,7 @@ impl SecurityVerifier {
     
     /// Performs a comprehensive security check on the contract bytecode,
     /// focusing on MEV vulnerabilities and other critical security issues.
-    pub fn verify_contract<'a>(&'a self, address: &'a str) -> impl std::future::Future<Output = Result<SecurityVerification, SendError>> + Send + 'a {
+    pub fn verify_contract(&self, address: &str) -> impl std::future::Future<Output = Result<SecurityVerification, SendError>> + Send + '_ {
         async move {
             let address_str = address.to_string();
             
@@ -591,46 +604,11 @@ impl SecurityVerifier {
                 verification_cache_duration_s: self.config.verification_cache_duration_s,
             };
 
-            // Convert Bytes to Vec<u8> for the verify_bytecode method
-            let bytecode_vec: Vec<u8> = bytecode.to_vec();
-            
-            // Perform security verification using StatelessVM client
-            let verification_result = self.stateless_vm_client.verify_bytecode(&bytecode_vec).await
-                .map_err(|e| SendError::ApiError(format!("Failed to verify bytecode: {}", e)))?;
-                
+            // Fetch the bytecode first
+            let bytecode_vec = self.stateless_vm_client.verify_bytecode(&bytecode).await?;
+
             // Process verification results
-            // Update the verification object based on the verification_result
-            if let Some(warnings) = verification_result.warnings {
-                for warning in warnings {
-                    // Convert the warning to a vulnerability
-                    let vulnerability_type = self.convert_warning_to_vulnerability(&warning);
-                    // Calculate severity and risk score before moving vulnerability_type
-                    let severity = self.determine_severity(&vulnerability_type);
-                    let risk_score = self.calculate_risk_score(&vulnerability_type);
-                    // Create a VulnerabilityReport from VulnerabilityType
-                    let vulnerability_report = VulnerabilityReport {
-                        vulnerability_type,
-                        severity,
-                        risk_score,
-                        confidence: 80, // Default confidence level
-                        bytecode_offset: None,
-                        function_selector: None,
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
-                    };
-                    verification.vulnerabilities.push(vulnerability_report);
-                }
-            }
-            
-            // Update security score (previously risk_score)
-            verification.security_score = verification_result.risk_score;
-            
-            // Set verification time if available
-            if let Some(time) = verification_result.execution_time_ms {
-                verification.verification_time_ms = time;
-            }
+            self.process_verification_result(&mut verification, bytecode_vec);
 
             // Calculate verification time
             if let Ok(elapsed) = start_time.elapsed() {
@@ -646,15 +624,15 @@ impl SecurityVerifier {
 
     /// Verify a transaction using individual parameters
     /// This is an overloaded method to support the existing API in the rest of the codebase
-    pub fn verify_transaction_params<'a>(
-        &'a self,
-        from_address: &'a str,
-        to_address: &'a str,
-        amount: &'a str,
-        data: &'a str,
-        gas_limit: &'a str,
-        gas_price: &'a str,
-    ) -> impl std::future::Future<Output = Result<SecurityVerification, SendError>> + Send + 'a {
+    pub fn verify_transaction_params(
+        &self,
+        from_address: &str,
+        to_address: &str,
+        amount: &str,
+        data: &str,
+        gas_limit: &str,
+        gas_price: &str,
+    ) -> impl std::future::Future<Output = Result<SecurityVerification, SendError>> + Send + '_ {
         async move {
             // Convert parameters to appropriate types
             let from = match from_address.parse::<H160>() {
@@ -700,7 +678,7 @@ impl SecurityVerifier {
     /// 
     /// Analyzes the transaction for potential security issues, especially
     /// focusing on MEV vulnerabilities and sandwich attack vectors.
-    pub fn verify_transaction<'a>(&'a self, tx: &'a Transaction) -> impl std::future::Future<Output = Result<SecurityVerification, SendError>> + Send + 'a {
+    pub fn verify_transaction(&self, tx: &Transaction) -> impl std::future::Future<Output = Result<SecurityVerification, SendError>> + Send + '_ {
         async move {
             // Use default Complete verification mode
             self.verify_transaction_with_mode(tx, VerificationMode::Complete).await
@@ -710,7 +688,7 @@ impl SecurityVerifier {
     /// Verify a transaction with specific verification mode for HFT optimization
     /// 
     /// Allows specifying different verification strategies to balance security and performance
-    pub fn verify_transaction_with_mode<'a>(&'a self, tx: &'a Transaction, mode: VerificationMode) -> impl std::future::Future<Output = Result<SecurityVerification, SendError>> + Send + 'a {
+    pub fn verify_transaction_with_mode(&self, tx: &Transaction, mode: VerificationMode) -> impl std::future::Future<Output = Result<SecurityVerification, SendError>> + Send + '_ {
         async move {
         // Test mode check
         if self.test_mode {
@@ -971,117 +949,6 @@ impl SecurityVerifier {
         }
         
         false
-    }
-    
-    /// Converts a SecurityWarning from the StatelessVmClient into a VulnerabilityType
-    fn convert_warning_to_vulnerability(&self, warning: &crate::statelessvm::client::SecurityWarning) -> VulnerabilityType {
-        // Map the warning type to a VulnerabilityType based on the warning_type string
-        match warning.warning_type.as_str() {
-            "reentrancy" => VulnerabilityType::Reentrancy {
-                function_signature: warning.message.clone(),
-            },
-            "integer_overflow" => VulnerabilityType::IntegerOverflow {
-                location: warning.message.clone(),
-            },
-            "integer_underflow" => VulnerabilityType::IntegerUnderflow {
-                location: warning.message.clone(),
-            },
-            "unchecked_calls" => VulnerabilityType::UncheckedCalls {
-                details: warning.description.clone(),
-            },
-            "cross_contract_reentrancy" => VulnerabilityType::CrossContractReentrancy {
-                details: warning.description.clone(),
-            },
-            "mev" => VulnerabilityType::MEV {
-                details: warning.description.clone(),
-            },
-            "access_control" => VulnerabilityType::AccessControl {
-                details: warning.description.clone(),
-            },
-            "unprotected_operation" => VulnerabilityType::UnprotectedOperation {
-                operation: warning.message.clone(),
-            },
-            "frontrunning" => VulnerabilityType::Frontrunning {
-                details: warning.description.clone(),
-            },
-            "oracle_manipulation" => VulnerabilityType::OracleManipulation {
-                details: warning.description.clone(),
-            },
-            "missing_slippage" => VulnerabilityType::MissingSlippage {
-                details: warning.description.clone(),
-            },
-            "uninitialized_storage" => VulnerabilityType::UninitializedStorage {
-                details: warning.description.clone(),
-            },
-            "timestamp_dependence" => VulnerabilityType::TimestampDependence {
-                details: warning.description.clone(),
-            },
-            "blocknumber_dependence" => VulnerabilityType::BlockNumberDependence {
-                details: warning.description.clone(),
-            },
-            "gas_griefing" => VulnerabilityType::GasGriefing {
-                details: warning.description.clone(),
-            },
-            "upgradability" => VulnerabilityType::Upgradability {
-                details: warning.description.clone(),
-            },
-            "price_manipulation" => VulnerabilityType::PriceManipulation {
-                details: warning.description.clone(),
-            },
-            // Default case for unknown warning types
-            _ => VulnerabilityType::Other {
-                name: warning.warning_type.clone(),
-                details: format!("{}. {}", warning.warning_type, warning.description)
-            },
-        }
-    }
-    
-    /// Determine severity level based on vulnerability type
-    fn determine_severity(&self, vulnerability_type: &VulnerabilityType) -> Severity {
-        match vulnerability_type {
-            VulnerabilityType::Reentrancy { .. } => Severity::Critical,
-            VulnerabilityType::IntegerOverflow { .. } => Severity::High,
-            VulnerabilityType::IntegerUnderflow { .. } => Severity::High,
-            VulnerabilityType::MEV { .. } => Severity::High,
-            VulnerabilityType::AccessControl { .. } => Severity::Critical,
-            VulnerabilityType::UncheckedCalls { .. } => Severity::Medium,
-            VulnerabilityType::GasGriefing { .. } => Severity::Medium,
-            VulnerabilityType::CrossContractReentrancy { .. } => Severity::Critical,
-            VulnerabilityType::BlockNumberDependence { .. } => Severity::Medium,
-            VulnerabilityType::OracleManipulation { .. } => Severity::High,
-            VulnerabilityType::PriceManipulation { .. } => Severity::High,
-            VulnerabilityType::Frontrunning { .. } => Severity::Medium,
-            VulnerabilityType::MissingSlippage { .. } => Severity::Medium,
-            VulnerabilityType::UninitializedStorage { .. } => Severity::Medium,
-            VulnerabilityType::TimestampDependence { .. } => Severity::Medium,
-            VulnerabilityType::Upgradability { .. } => Severity::Medium,
-            VulnerabilityType::UnprotectedOperation { .. } => Severity::High,
-            VulnerabilityType::Other { .. } => Severity::Medium,
-        }
-    }
-    
-    /// Calculate risk score based on vulnerability type (0-100)
-    fn calculate_risk_score(&self, vulnerability_type: &VulnerabilityType) -> u8 {
-        match vulnerability_type {
-            VulnerabilityType::Reentrancy { .. } => 95,
-            VulnerabilityType::IntegerOverflow { .. } => 85,
-            VulnerabilityType::IntegerUnderflow { .. } => 85,
-            VulnerabilityType::MEV { .. } => 80,
-            VulnerabilityType::AccessControl { .. } => 90,
-            VulnerabilityType::UncheckedCalls { .. } => 70,
-            VulnerabilityType::GasGriefing { .. } => 65,
-            VulnerabilityType::CrossContractReentrancy { .. } => 90,
-            VulnerabilityType::BlockNumberDependence { .. } => 60,
-            VulnerabilityType::OracleManipulation { .. } => 85,
-            VulnerabilityType::PriceManipulation { .. } => 80,
-            VulnerabilityType::Frontrunning { .. } => 75,
-            VulnerabilityType::MissingSlippage { .. } => 70,
-            VulnerabilityType::UninitializedStorage { .. } => 75,
-            VulnerabilityType::TimestampDependence { .. } => 60,
-            VulnerabilityType::Upgradability { .. } => 70,
-            VulnerabilityType::UnprotectedOperation { .. } => 85,
-            VulnerabilityType::Other { .. } => 50,
-        }
     }
     
     fn process_verification_result(
@@ -1663,15 +1530,15 @@ impl SecurityVerifier {
     }
 
 /// Test mode version of verify_transaction
-pub fn verify_transaction_test_mode<'a>(
-    &'a self,
-    _from: &'a str,
-    _to: &'a str,
-    _value: &'a str,
-    _data: &'a str,
-    _gas_limit: &'a str,
-    _gas_price: &'a str,
-) -> impl std::future::Future<Output = Result<bool, SendError>> + Send + 'a {
+pub fn verify_transaction_test_mode(
+    &self,
+    _from: &str,
+    _to: &str,
+    _value: &str,
+    _data: &str,
+    _gas_limit: &str,
+    _gas_price: &str,
+) -> impl std::future::Future<Output = Result<bool, SendError>> + Send + '_ {
     async move {
         // In test mode, simple ETH transfers are always safe
         let is_data_empty = _data == "0x" || _data.is_empty();
@@ -1715,5 +1582,4 @@ pub fn verify_transaction_test_mode<'a>(
         
         Ok(!has_critical_vulnerabilities && !has_mev_vulnerability)
     }
-}
 }

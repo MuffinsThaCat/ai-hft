@@ -1,9 +1,12 @@
 use ai_trading_agent::statelessvm::client::{StatelessVmClient, StatelessTxRequest, StatelessTxResponse, SecurityVerificationRequest, SecurityVerificationResult};
 use ai_trading_agent::models::error::{AgentError, AgentResult};
 use std::time::{Instant, Duration};
+use std::env;
 use log::{info, warn, error, debug};
+use env_logger;
 
 // Status codes for better tracking
+#[derive(Debug)]
 pub enum ExecutionStatus {
     Pending,
     GeneratingWitnesses,
@@ -282,4 +285,113 @@ impl StatelessVmExecutor {
             security_verification: mock_security_verification,
         })
     }
+}
+
+fn main() -> AgentResult<()> {
+    // Create and run a new tokio runtime
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+    // Initialize logger
+    env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
+    
+    // Get StatelessVM URL from environment or use default
+    let stateless_vm_url = env::var("STATELESS_VM_URL")
+        .unwrap_or_else(|_| "http://localhost:7548".to_string());
+    
+    println!("Starting StatelessVM executor example with URL: {}", stateless_vm_url);
+    
+    // Initialize the executor with reasonable defaults
+    let verification_timeout_ms = 5000; // 5 seconds
+    let max_retry_attempts = 3;
+    let retry_backoff_ms = 1000; // 1 second
+    
+    let mut executor = StatelessVmExecutor::new(
+        &stateless_vm_url,
+        verification_timeout_ms,
+        max_retry_attempts,
+        retry_backoff_ms
+    );
+    
+    // Example sender and receiver addresses
+    let sender = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199";
+    let receiver = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+    
+    // Create a security verification request
+    let security_config = SecurityVerificationRequest {
+        address: sender.to_string(),
+        enabled: true,
+        max_risk_score: 50,
+        verify_reentrancy: true,
+        verify_integer_underflow: true,
+        verify_integer_overflow: true,
+        verify_unchecked_calls: true,
+        verify_upgradability: true,
+        verify_mev_vulnerability: true,
+        verify_cross_contract_reentrancy: true,
+        verify_precision_loss: true,
+        verify_gas_griefing: true,
+    };
+    
+    // Sample transaction data (token transfer)
+    let tx_data = "0xa9059cbb000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec7000000000000000000000000000000000000000000000000000000003b9aca00";
+    
+    // Create transaction request
+    let tx_request = StatelessTxRequest {
+        from: sender.to_string(),
+        to: receiver.to_string(),
+        value: "0".to_string(),
+        data: tx_data.to_string(),
+        gas_limit: "100000".to_string(),
+        gas_price: "10000000000".to_string(),
+        security_verification: security_config.clone(),
+        bundle_id: None,
+    };
+    
+    // Execute the transaction
+    println!("Executing transaction...\n");
+    
+    match executor.execute_transaction(tx_request).await {
+        Ok(response) => {
+            println!("Transaction executed successfully!");
+            println!("Response: {:?}\n", response);
+            
+            println!("Performance metrics:");
+            let metrics = executor.get_metrics();
+            println!("  Witness generation time: {}ms", metrics.witness_generation_time_ms);
+            println!("  Transaction submission time: {}ms", metrics.transaction_submission_time_ms);
+            
+            println!("\nCurrent executor status: {:?}", executor.get_status());
+        },
+        Err(e) => {
+            println!("Failed to execute transaction: {:?}", e);
+            println!("Current executor status: {:?}", executor.get_status());
+            println!("\nFalling back to mock mode...");
+            executor.enable_mock_mode();
+            
+            // Create a new request for mock execution
+            let mock_tx_request = StatelessTxRequest {
+                from: sender.to_string(),
+                to: receiver.to_string(),
+                value: "0".to_string(),
+                data: tx_data.to_string(),
+                gas_limit: "100000".to_string(),
+                gas_price: "10000000000".to_string(),
+                security_verification: security_config,
+                bundle_id: None,
+            };
+            
+            match executor.execute_mock_transaction(&mock_tx_request) {
+                Ok(mock_response) => {
+                    println!("Mock transaction executed successfully!");
+                    println!("Mock response: {:?}", mock_response);
+                },
+                Err(mock_err) => {
+                    println!("Mock execution also failed: {:?}", mock_err);
+                }
+            }
+        }
+    }
+    
+        Ok(())
+    })
 }

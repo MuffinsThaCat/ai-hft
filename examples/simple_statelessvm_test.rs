@@ -126,6 +126,7 @@ fn create_test_transaction(from_address: &Address) -> StatelessTxRequest {
         data: "0x".to_string(),
         gas_limit: "100000".to_string(),
         gas_price: "50000000000".to_string(), // 50 Gwei
+        bundle_id: Some(uuid::Uuid::new_v4().to_string()),
         security_verification: SecurityVerificationRequest {
             address: from_address.to_string(),
             enabled: true,

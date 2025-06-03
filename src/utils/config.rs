@@ -96,8 +96,31 @@ pub struct SecurityConfig {
     pub verify_cross_contract_reentrancy: bool,
     pub verify_precision_loss: bool,
     pub verify_gas_griefing: bool,
+    pub verify_access_control: bool,
     pub cache_verification_results: bool,
     pub verification_cache_duration_s: u64,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            verification_mode: "enabled".to_string(),
+            verify_contracts: true,
+            max_risk_score: 80,
+            verify_reentrancy: true,
+            verify_integer_underflow: true,
+            verify_integer_overflow: true,
+            verify_unchecked_calls: true,
+            verify_upgradability: true,
+            verify_mev_vulnerability: true,
+            verify_cross_contract_reentrancy: true,
+            verify_precision_loss: true,
+            verify_gas_griefing: true,
+            verify_access_control: true,
+            cache_verification_results: true,
+            verification_cache_duration_s: 3600,
+        }
+    }
 }
 
 pub fn load_config<P: AsRef<Path>>(path: P) -> Result<Config, Box<dyn std::error::Error>> {

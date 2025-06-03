@@ -52,6 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         gas_limit: "0x100000".to_string(),
         gas_price: "0x3b9aca00".to_string(),
         security_verification,
+        bundle_id: Some(Uuid::new_v4().to_string()),
     };
     
     info!("Sending StatelessVM transaction request:");

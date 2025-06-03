@@ -5,6 +5,13 @@ edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
 description = "AI-powered trading agent for Avalanche blockchain"
 
+# Define feature flags
+[features]
+default = ["standard"]
+standard = []
+relay = []  # Relay module feature flag
+testing = [] # Testing-only features
+
 [dependencies]
 tokio = { version = "1.28", features = ["full"] }
 reqwest = { version = "0.11", features = ["json"] }
@@ -16,7 +23,7 @@ rand = "0.8"
 log = "0.4"
 env_logger = "0.10"
 simple_logger = "4.2"
-async-trait = "0.1"
+async-trait = { version = "0.1", features = [] }
 futures = "0.3"
 ethers = { version = "2.0", features = ["legacy", "rustls", "ws"] }
 hex = "0.4"
@@ -40,6 +47,8 @@ sha3 = "0.10"
 rlp = "0.5"
 anyhow = "1.0"
 thiserror = "1.0"
+ring = "0.16.20"
+base64 = "0.13.0"
 
 # LLM API clients
 anthropic = "0.0.8"

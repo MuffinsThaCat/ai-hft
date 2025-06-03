@@ -5,6 +5,11 @@ pub mod data;
 pub mod execution;
 pub mod models;
 pub mod reasoning;
+
+// Only include relay module when the "relay" feature is enabled
+#[cfg(feature = "relay")]
+pub mod relay;
+
 pub mod security;
 pub mod statelessvm;
 pub mod strategies;

@@ -1,4 +1,6 @@
-use ai_trading_agent::statelessvm::{StatelessVmClient, StatelessTxRequest, SecurityVerificationRequest};
+use ai_trading_agent::StatelessVmClient;
+use ai_trading_agent::statelessvm::client::StatelessTxRequest;
+use ai_trading_agent::statelessvm::client::SecurityVerificationRequest;
 use std::error::Error;
 use std::env;
 
@@ -10,8 +12,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     
     println!("Connecting to StatelessVM at: {}", stateless_vm_url);
     
+    // Example sender and receiver addresses
+    let sender = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199";
+    let receiver = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
+    
     // Security verification configuration (same for all transactions)
     let security_config = SecurityVerificationRequest {
+        address: sender.to_string(),
         enabled: true,
         max_risk_score: 50,
         verify_reentrancy: true,
@@ -25,10 +32,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         verify_gas_griefing: true,
     };
     
-    // Example sender and receiver addresses
-    let sender = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199";
-    let receiver = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
-    
     // Sample transaction data (in this case, a token transfer)
     let tx_data = "0xa9059cbb000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec7000000000000000000000000000000000000000000000000000000003b9aca00"; // Transfer 1 token
     
@@ -41,6 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         gas_limit: "100000".to_string(),
         gas_price: "10000000000".to_string(),
         security_verification: security_config.clone(),
+        bundle_id: None,
     };
     
     // Create transaction 2 (similar but with different amount)
@@ -52,6 +56,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         gas_limit: "100000".to_string(),
         gas_price: "10000000000".to_string(),
         security_verification: security_config.clone(),
+        bundle_id: None,
     };
     
     // Convert transactions to hex strings (in a real application, you'd use proper encoding)
@@ -82,8 +87,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
             if let Some(market_state) = result.market_state {
                 println!("\nMarket State:");
                 println!("  Gas Price: {}", market_state.gas_price);
-                println!("  Block Number: {}", market_state.block_number);
-                println!("  Network Congestion: {}/10", market_state.network_congestion);
+                println!("  Timestamp: {}", market_state.timestamp);
+                
+                if !market_state.prices.is_empty() {
+                    println!("  Prices:");
+                    for (token, price) in &market_state.prices {
+                        println!("    {}: ${:.2}", token, price);
+                    }
+                }
+                
+                if !market_state.volatility.is_empty() {
+                    println!("  Volatility:");
+                    for (token, vol) in &market_state.volatility {
+                        println!("    {}: {:.2}%", token, vol * 100.0);
+                    }
+                }
             }
             
             if result.fallback_executed {

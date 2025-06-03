@@ -1,9 +1,8 @@
-use ai_trading_agent::models::error::{AgentResult, AgentError};
-use std::path::Path;
+use ai_trading_agent::models::error::AgentResult;
 
 // Import from the main crate
 use ai_trading_agent::security::verifier::SecurityVerifier;
-use ai_trading_agent::statelessvm::client::{StatelessVmClient, StatelessTxRequest};
+use ai_trading_agent::statelessvm::client::StatelessVmClient;
 use ai_trading_agent::utils::config;
 
 #[tokio::main]
@@ -33,15 +32,15 @@ async fn main() -> AgentResult<()> {
     println!("Testing contract verification for address: {}", contract_address);
     
     match security_verifier.verify_contract(contract_address).await {
-        Ok(vulnerabilities) => {
+        Ok(verification_result) => {
             println!("Contract verification successful");
-            println!("Detected {} vulnerabilities", vulnerabilities.len());
+            println!("Detected {} vulnerabilities", verification_result.vulnerabilities.len());
             
-            for (i, vuln) in vulnerabilities.iter().enumerate() {
+            for (i, vuln) in verification_result.vulnerabilities.iter().enumerate() {
                 println!("Vulnerability #{}", i + 1);
                 println!("  Type: {:?}", vuln.vulnerability_type);
                 println!("  Severity: {:?}", vuln.severity);
-                println!("  Description: {}", vuln.description);
+                // No description field in VulnerabilityReport
                 println!("  Risk Score: {}", vuln.risk_score);
             }
         }
@@ -54,29 +53,43 @@ async fn main() -> AgentResult<()> {
     
     // Test transaction verification
     // This is a simple ETH transfer transaction
-    let from_address = "0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199";
-    let to_address = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
-    let value = "1000000000000000"; // 0.001 ETH
-    let data = "0x";
-    let gas_limit = "21000";
-    let gas_price = "20";
+    // We need to create a Transaction object since the API now expects a single Transaction parameter
+    use ethers::types::{Transaction, U256, U64, H160, Bytes, H256, OtherFields};
+    use std::str::FromStr;
+    
+    // Create a Transaction object
+    let tx = Transaction {
+        hash: H256::zero(),  // Not important for verification
+        nonce: U256::from(0),
+        block_hash: None,
+        block_number: None,
+        transaction_index: None,
+        from: H160::from_str("0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199").unwrap(),
+        to: Some(H160::from_str("0xdAC17F958D2ee523a2206206994597C13D831ec7").unwrap()),
+        value: U256::from_dec_str("1000000000000000").unwrap(), // 0.001 ETH
+        gas_price: Some(U256::from(20)),
+        gas: U256::from(21000),
+        input: Bytes::from_str("0x").unwrap(),
+        v: U64::from(0),
+        r: U256::from(0),
+        s: U256::from(0),
+        transaction_type: None,
+        access_list: None,
+        max_priority_fee_per_gas: None,
+        max_fee_per_gas: None,
+        chain_id: None,
+        other: OtherFields::default(),
+    };
     
     println!("\nTesting transaction verification");
-    println!("From: {}", from_address);
-    println!("To: {}", to_address);
-    println!("Value: {} wei", value);
+    println!("From: {:?}", tx.from);
+    println!("To: {:?}", tx.to);
+    println!("Value: {} wei", tx.value);
     
-    match security_verifier.verify_transaction(
-        from_address, 
-        to_address, 
-        value, 
-        data, 
-        gas_limit, 
-        gas_price
-    ).await {
+    match security_verifier.verify_transaction(&tx).await {
         Ok(is_safe) => {
             println!("Transaction verification successful");
-            println!("Transaction is safe: {}", is_safe);
+            println!("Transaction is safe: {:?}", is_safe);
         }
         Err(e) => {
             println!("Transaction verification failed: {}", e);

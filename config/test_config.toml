@@ -1,0 +1,76 @@
+# Test configuration for AI Trading Agent
+
+[data]
+providers = ["coingecko", "traderjoe"]
+update_interval_ms = 5000  # 5 seconds
+cache_duration_s = 60  # 1 minute
+cache_expiry_seconds = 3600  # 1 hour - Added missing field
+avalanche_rpc_url = "https://api.avax.network/ext/bc/C/rpc"
+
+[llm]
+provider = "anthropic"
+api_key = "dummy-key-for-testing"
+model = "claude-opus-4-20250514"
+temperature = 0.2
+max_tokens = 1024
+retry_delay_ms = 500
+retry_attempts = 3
+backoff_ms = 1000
+
+[strategies]
+active_strategies = ["flash_arbitrage"]
+risk_level = 3
+max_position_size = "0.2 AVAX"
+max_slippage_bps = 20
+min_confidence_score = 0.85
+
+[strategies.flash_arbitrage]
+min_profit_threshold = "0.01 AVAX"
+max_execution_time_ms = 1500
+confidence_threshold = 0.95
+max_gas_price_gwei = 20
+
+[execution]
+relayer_url = "http://localhost:8545"
+avalanche_rpc_url = "https://api.avax.network/ext/bc/C/rpc"
+stateless_vm_url = "http://localhost:7548"
+max_gas_price_gwei = 25
+confirmation_blocks = 3
+bundle_timeout_ms = 15000
+retry_attempts = 2
+wallet_key = "${WALLET_KEY}"
+wallet_address = "${WALLET_ADDRESS}"
+max_risk_score = 3
+witness_generation_timeout_ms = 5000
+max_transactions_per_session = 3
+test_mode = true
+
+[security]
+verification_mode = "strict"
+verify_contracts = true
+verify_reentrancy = true
+verify_integer_overflow = true
+verify_integer_underflow = true
+max_risk_score = 5
+verify_unchecked_calls = true
+verify_upgradability = true
+verify_mev_vulnerability = true
+verify_cross_contract_reentrancy = true
+verify_precision_loss = true
+verify_gas_griefing = true
+verify_access_control = true
+cache_verification_results = true
+verification_cache_duration_s = 3600
+
+# DEX trading pairs to monitor
+[[pairs]]
+dex = "trader_joe"
+pair_address = "0xf4003f4efbe8691b60249e6afbd307abe7758adb"
+name = "AVAX/USDC"
+priority = 1
+
+[[pairs]]
+dex = "trader_joe"
+pair_address = "0xed8cbd9f0ce3c6986b22002f03c6475ceb7a6256"
+name = "ETH/AVAX"
+priority = 2

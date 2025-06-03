@@ -76,6 +76,7 @@ async fn main() -> AgentResult<()> {
         data,
         gas_limit: "0x100000".to_string(),
         gas_price: "0x3b9aca00".to_string(), // 1 Gwei
+        bundle_id: Some(Uuid::new_v4().to_string()),
         security_verification,
     };
     

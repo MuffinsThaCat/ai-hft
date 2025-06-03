@@ -546,7 +546,7 @@ impl ExecutionEngine {
             // in the SecurityVerificationRequest struct
             
             // Verify transaction safety using stateless VM
-            let is_safe = self.security_verifier.verify_transaction(
+            let is_safe = self.security_verifier.verify_transaction_params(
                 &wallet_address.to_string(),
                 &action.target_address,
                 &action.amount.to_string(),
